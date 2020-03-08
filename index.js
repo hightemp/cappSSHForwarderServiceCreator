@@ -102,7 +102,7 @@ Restart=always
 WantedBy=multi-user.target
 `;
 
-var sUnitFileConfigPath = '/etc/default/secure-tunnel@proxy';
+var sUnitFileConfigPathTemplate = '/etc/default/secure-tunnel@{UNIT_NAME}';
 var sUnitFileConfigTemplate = `
 TARGET={TARGET}
 LOCAL_ADDR={LOCAL_ADDR}
@@ -115,12 +115,24 @@ for (var sServerName in oConfig) {
   oConnection
     .on('ready', () => {
       console.log('Client :: ready');
+
+      var sServiceName = fnDefault(oConfig[sServerName].sUnitServiceName, "proxy");
+
+      var sUnitFileConfigPath = sUnitFileConfigPathTemplate
+        .replace('{UNIT_NAME}', sServiceName);
+      
       var sUnitFileConfig = sUnitFileConfigTemplate
         .replace('{TARGET}', oConfig[sServerName].sSSHConfigTarget)
         .replace('{LOCAL_ADDR}', fnDefault(oConfig[sServerName].sLocalAddress, "0.0.0.0"))
-        .replace('{LOCAL_PORT}', fnDefault(oConfig[sServerName], "9090"));
+        .replace('{LOCAL_PORT}', fnDefault(oConfig[sServerName].sLocalPort, "9090"));
 
+      fnExec(oConnection, `sudo cat <<EOF > ${sUnitFileConfigPath} ${sUnitFileConfig}`);
       fnExec(oConnection, `sudo cat <<EOF > ${sUnitFilePath} ${sUnitFileTemplate}`);
+
+      fnExec(oConnection, `systemctl daemon-reload`);
+      fnExec(oConnection, `systemctl start secure-tunnel@${sServiceName}`);
+      fnExec(oConnection, `systemctl status secure-tunnel@${sServiceName}`);
+      fnExec(oConnection, `systemctl enable secure-tunnel@${sServiceName}`);
     })
     .connect({
       host: oConfig[sServerName].sHost,
