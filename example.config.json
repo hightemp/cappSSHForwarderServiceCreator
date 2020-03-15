@@ -3,6 +3,7 @@
         "sHost": "127.0.0.1",
         "iPort": 2222,
         "sUserName": "vagrant",
+        "sSudoPassword": "vagrant",
         "sPrivateKeyPath": "/home/user/vagrant/socks_proxy/.vagrant/machines/default/virtualbox/private_key",
         "sSSHConfigTarget": "server_name",
         "sLocalAddress": "0.0.0.0",

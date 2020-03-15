@@ -42,25 +42,55 @@ function fnReadKey(sKeyPath)
   }
 }
 
-function fnExec(oConnection, sCommand)
+async function fnExec(oConnection, sCommand, sStreamWriteText='')
 {
-  oConnection
-    .exec(sCommand, (err, stream) => {
-      if (err) 
-        throw err;
-      stream
-        .on('close', (code, signal) => {
-          console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
-          oConnection.end();
-        })
-        .on('data', (data) => {
-          console.log('STDOUT: ' + data);
-        })
-        .stderr
-        .on('data', (data) => {
-          console.log('STDERR: ' + data);
-        });
-    });
+  $log('Exec: ' + sCommand);
+
+  return (new Promise((fnSuccess, fnFail) => {
+    oConnection
+      .exec(sCommand, { pty: true }, (err, stream) => {
+        if (err) {
+          throw err;
+        }
+
+        $log('Exececuted');
+
+        function fnStreamWriteText()
+        {
+          if (sStreamWriteText) {
+            $log(`stream.write: ${sStreamWriteText}`);
+            stream.write(`${sStreamWriteText}\n`);
+          }
+        }
+
+        fnStreamWriteText();
+
+        stream
+          .on('exit', function() {
+            $log('Stream :: exit');
+          })
+          .on('end', function() {
+            $log('Stream :: end');
+          })
+          .on('error', function(err) {
+            $log('Stream :: error: ' + err);
+          })
+          .on('close', (code, signal) => {
+            $log('Stream :: close :: code: ' + code + ', signal: ' + signal);
+            // oConnection.end();
+            fnSuccess();
+          })
+          .on('data', (data) => {
+            $log('Stream :: stdout :: data: ' + data);
+            fnSuccess(data);
+          })
+          .stderr
+          .on('data', (data) => {
+            $log('Stream :: stderr :: data: ' + data);
+            fnFail(data);
+          });
+      });
+  }));
 }
 
 function fnDefault(mValue, mDefaultValue)
@@ -92,7 +122,7 @@ After=network.target
 [Service]
 Environment="LOCAL_ADDR=localhost"
 EnvironmentFile=/etc/default/secure-tunnel@%i
-ExecStart=/usr/bin/ssh -NT -C -o ServerAliveInterval=60 -o ExitOnForwardFailure=yes -D \${LOCAL_ADDR}:\${LOCAL_PORT} \${TARGET}
+ExecStart=/usr/bin/ssh -vvv -NT -C -o ServerAliveInterval=60 -o ExitOnForwardFailure=yes -D \${LOCAL_ADDR}:\${LOCAL_PORT} \${TARGET}
 
 # Restart every >2 seconds to avoid StartLimitInterval failure
 RestartSec=5
@@ -110,35 +140,59 @@ LOCAL_PORT={LOCAL_PORT}
 `;
 
 for (var sServerName in oConfig) {
-  var oConnection = new Client();
+  (async (sServerName, oConfigItem) => {
+    var oConnection = new Client();
 
-  oConnection
-    .on('ready', () => {
-      console.log('Client :: ready');
+    oConnection
+      .on('error', function(err) {
+        $log('Connection :: error :: ' + err);
+      })
+      .on('end', function() {
+        $log('Connection :: end');
+      })
+      .on('close', function(had_error) {
+        $log('Connection :: close', had_error ? 'had error' : '');
+      })
+      .on('ready', async () => {
+        $log('Client :: ready');
 
-      var sServiceName = fnDefault(oConfig[sServerName].sUnitServiceName, "proxy");
+        var sServiceName = fnDefault(oConfigItem.sUnitServiceName, "proxy");
 
-      var sUnitFileConfigPath = sUnitFileConfigPathTemplate
-        .replace('{UNIT_NAME}', sServiceName);
-      
-      var sUnitFileConfig = sUnitFileConfigTemplate
-        .replace('{TARGET}', oConfig[sServerName].sSSHConfigTarget)
-        .replace('{LOCAL_ADDR}', fnDefault(oConfig[sServerName].sLocalAddress, "0.0.0.0"))
-        .replace('{LOCAL_PORT}', fnDefault(oConfig[sServerName].sLocalPort, "9090"));
+        var sUnitFileConfigPath = sUnitFileConfigPathTemplate
+          .replace('{UNIT_NAME}', sServiceName);
+        
+        var sUnitFileConfig = sUnitFileConfigTemplate
+          .replace('{TARGET}', oConfigItem.sSSHConfigTarget)
+          .replace('{LOCAL_ADDR}', fnDefault(oConfigItem.sLocalAddress, "0.0.0.0"))
+          .replace('{LOCAL_PORT}', fnDefault(oConfigItem.sLocalPort, "9090"));
 
-      fnExec(oConnection, `sudo cat <<EOF > ${sUnitFileConfigPath} ${sUnitFileConfig}`);
-      fnExec(oConnection, `sudo cat <<EOF > ${sUnitFilePath} ${sUnitFileTemplate}`);
+        try {
+          // var sSudo = `echo "${oConfigItem.sSudoPassword}" | sudo -S`;
 
-      fnExec(oConnection, `systemctl daemon-reload`);
-      fnExec(oConnection, `systemctl start secure-tunnel@${sServiceName}`);
-      fnExec(oConnection, `systemctl status secure-tunnel@${sServiceName}`);
-      fnExec(oConnection, `systemctl enable secure-tunnel@${sServiceName}`);
-    })
-    .connect({
-      host: oConfig[sServerName].sHost,
-      port: oConfig[sServerName].iPort,
-      username: oConfig[sServerName].sUserName,
-      privateKey: fnReadKey(oConfig[sServerName].sPrivateKeyPath)
-    });
+          await fnExec(oConnection, `sudo su`, 
+`${oConfigItem.sSudoPassword}
+whoami
+cat <<EOF > ${sUnitFileConfigPath} ${sUnitFileConfig}\nEOF
+cat <<EOF > ${sUnitFilePath} ${sUnitFileTemplate}\nEOF
+systemctl daemon-reload
+systemctl start secure-tunnel@${sServiceName}
+systemctl enable secure-tunnel@${sServiceName}
+exit
+`);
+          
+          $log("************ EXIT ************");
+
+          oConnection.end();
+        } catch (oError) {
+          $log("Error:"+oError+"");
+        }
+      })
+      .connect({
+        host: oConfigItem.sHost,
+        port: oConfigItem.iPort,
+        username: oConfigItem.sUserName,
+        privateKey: fnReadKey(oConfigItem.sPrivateKeyPath)
+      });
+  })(sServerName, oConfig[sServerName]);
 }
 
