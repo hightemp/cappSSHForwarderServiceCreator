@@ -104,9 +104,6 @@ function fnDefault(mValue, mDefaultValue)
   return mValue ? mValue : mDefaultValue;
 }
 
-// ssh -vvv -D 0.0.0.0:9090 -f -F ../.ssh/config -o StrictHostKeyChecking=no -C -N proxy_fornex
-// -L \${LOCAL_ADDR}:\${LOCAL_PORT}:localhost:\${REMOTE_PORT}
-
 /**
  * ssh -D opens a local port, but it doesn't have 
  * a specific endpoint like with -L. Instead, it 
@@ -226,7 +223,7 @@ exit
 
           oConnection.end();
         } catch (oError) {
-          $log("Error:"+oError+"");
+          $log("Error: "+oError+"");
         }
       })
       .connect({
