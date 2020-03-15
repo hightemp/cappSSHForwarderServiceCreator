@@ -7,6 +7,8 @@
         "sPrivateKeyPath": "/home/user/vagrant/socks_proxy/.vagrant/machines/default/virtualbox/private_key",
         "sSSHConfigTarget": "server_name",
         "sLocalAddress": "0.0.0.0",
-        "sLocalPort": "9090"
+        "sLocalPort": "9090",
+        "sSSHConfigPath": "./ssh/config",
+        "sSSHKeyPath": "./ssh/key_rsa"
     }
 }
