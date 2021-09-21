@@ -11,6 +11,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "ssh2": "^0.8.8"
+    "ssh2": "^1.4.0"
   }
 }
